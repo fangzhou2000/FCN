@@ -3,7 +3,10 @@ import datetime
 import os
 import torch
 import yaml
-from models import fcn32s
+from models.fcn32s import FCN32s
+from models.vgg import VGG16
+from datasets.voc import SBDClassSeg, VOC2011ClassSeg 
+from trainer import Trainer
 
 def get_parameters(model, bias=False):
     import torch.nn as nn
@@ -12,7 +15,7 @@ def get_parameters(model, bias=False):
         nn.MaxPool2d,
         nn.Dropout2d,
         nn.Sequential,
-        fcn32s.FCN32s
+        FCN32s
     )
     for m in model.modules():
         if isinstance(m, nn.Conv2d):
@@ -62,5 +65,63 @@ def train():
     
     # dataset
     
+    root = os.path.expanduser("~/datasets")
+    kwargs = {"num_workers": 4, "pin_memory": True} if cuda else {}
+    train_dl = torch.utils.data.DataLoaders(
+        SBDClassSeg(root=root, split='train', is_transform=True),
+        batch_size=1, shuffle=True, **kwargs
+    )
+    val_dl = torch.utils.data.DataLoaders(
+        VOC2011ClassSeg(root=root, split='seg11valid', is_transform=True),
+        batch_size=1, shuffle=False, **kwargs
+    )
+    
+    # model
+    model = FCN32s(n_class=21)
+    start_epoch = 0
+    start_iteration = 0
+    if args.resume:
+        checkpoint = torch.load(args.resume)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        start_epoch = checkpoint['epoch']
+        start_iteration = checkpoint['iteration']
+    else:
+        vgg16 = VGG16(pretrained=True)
+        model.copy_params_from_vgg16(vgg16)
+    if cuda:
+        model = model.cuda()
+
+    # optimizer
+
+    optim = torch.optim.SGD(
+        [
+            {'params': get_parameters(model, bias=False)},
+            {'params': get_parameters(model, bias=True), 'lr': args.lr * 2, 'weight_decay': 0}
+        ],
+        lr = args.lr,
+        momentum=args.momentum,
+        weight_decay=args.weight_decay
+    )
+    if args.resume:
+        optim.load_state_dict(checkpoint['optim_state_dict'])
+    
+    trainer = Trainer(
+        cuda=cuda,
+        model=model,
+        optimizer=optim,
+        train_dl=train_dl,
+        val_dl=val_dl,
+        out=args.out,
+        max_iter=args.max_iteration,
+        interval_validate=4000,
+    )
+    trainer.epoch = start_epoch
+    trainer.iteration = start_iteration
+    trainer.train()
+
+if __name__ == "__main__":
+    train()
+
+
     
 
