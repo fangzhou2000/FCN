@@ -39,7 +39,7 @@ class VOCClassSegBase(Dataset):
         self.is_transform = is_transform
 
         # VOC2011 is subset of VOC2012
-        dataset_dir = os.path.join(root, 'VOC2012/VOCtrainval_11-May-2012/VOC2012')
+        dataset_dir = os.path.join(root, 'VOC2012/VOCdevkit/VOC2012')
         self.files = collections.defaultdict(list)
         for split in ['train', 'val']:
             imagesets_file = os.path.join(dataset_dir, 'ImageSets/Segmentation/{}.txt'.format(split))
@@ -60,7 +60,7 @@ class VOCClassSegBase(Dataset):
         # load image
         image_file = data_file['image']
         image = PIL.Image.open(image_file) # HWC, RGB
-        image = np.array(image_file, dtype=np.uint8)
+        image = np.array(image, dtype=np.uint8)
         # load label
         label_file = data_file['label']
         label = PIL.Image.open(label_file)
@@ -84,7 +84,7 @@ class VOCClassSegBase(Dataset):
         image = image.numpy()
         image = image.transpose(1, 2, 0)
         image += self.mean_bgr
-        image = image.astype(np.unit8)
+        image = image.astype(np.uint8)
         label = label.numpy()
         return image, label
     
@@ -94,12 +94,12 @@ class VOC2011ClassSeg(VOCClassSegBase):
         super(VOC2011ClassSeg, self).__init__(root=root, split=split, is_transform=is_transform)
         # https://github.com/shelhamer/fcn.berkeleyvision.org/blob/master/data/pascal/seg11valid.txt
         imagesets_file = os.path.join(self.root, 'VOC2012/seg11valid.txt')
-        dataset_dir = os.path.join(self.root, 'VOC2012/VOCtrainval_11-May-2012/VOC2012')
+        dataset_dir = os.path.join(self.root, 'VOC2012/VOCdevkit/VOC2012')
         for id in open(imagesets_file):
             id = id.strip()
             image_file = os.path.join(dataset_dir, 'JPEGImages/{}.jpg'.format(id))
             label_file = os.path.join(dataset_dir, 'SegmentationClass/{}.png'.format(id))
-            self.file['seg11valid'].append({
+            self.files['seg11valid'].append({
                 'image': image_file,
                 'label': label_file
             })

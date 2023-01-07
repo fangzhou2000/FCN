@@ -2,6 +2,7 @@ import argparse
 import datetime
 import os
 import torch
+from torch.utils.data import DataLoader
 import yaml
 from models.fcn32s import FCN32s
 from models.vgg import VGG16
@@ -33,7 +34,7 @@ def get_parameters(model, bias=False):
             raise ValueError("Unexpected module: {}".format(str(m)))
 
 
-here = os.path.join(os.path.abspath(__file__))
+here = os.getcwd()
 
 def train():
     parser = argparse.ArgumentParser(
@@ -50,7 +51,7 @@ def train():
 
     args.model = 'FCN32s'
     now = datetime.datetime.now()
-    args.out = os.path.join(here, 'logs', now.strftime('%Y%m%d_%H%M%S.%.f'))
+    args.out = os.path.join(here, 'logs', now.strftime('%Y%m%d_%H%M%S.%f'))
 
     os.makedirs(args.out)
     with open(os.path.join(args.out, 'config.yaml'), 'w') as f:
@@ -67,11 +68,13 @@ def train():
     
     root = os.path.expanduser("~/datasets")
     kwargs = {"num_workers": 4, "pin_memory": True} if cuda else {}
-    train_dl = torch.utils.data.DataLoaders(
+    # the batch size must be 1 for SDS, because the size for images are not the same
+    # if want mini-batch, need to resize the images and process the labels
+    train_dl = DataLoader(
         SBDClassSeg(root=root, split='train', is_transform=True),
         batch_size=1, shuffle=True, **kwargs
     )
-    val_dl = torch.utils.data.DataLoaders(
+    val_dl = DataLoader(
         VOC2011ClassSeg(root=root, split='seg11valid', is_transform=True),
         batch_size=1, shuffle=False, **kwargs
     )
@@ -96,7 +99,7 @@ def train():
     optim = torch.optim.SGD(
         [
             {'params': get_parameters(model, bias=False)},
-            {'params': get_parameters(model, bias=True), 'lr': args.lr * 2, 'weight_decay': 0}
+            {'params': get_parameters(model, bias=True), 'lr': args.lr * 2, 'weight_decay': 0.0005}
         ],
         lr = args.lr,
         momentum=args.momentum,
@@ -120,6 +123,8 @@ def train():
     trainer.train()
 
 if __name__ == "__main__":
+    import warnings
+    warnings.filterwarnings('ignore')
     train()
 
 

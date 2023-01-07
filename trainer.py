@@ -42,7 +42,7 @@ class Trainer(object):
         self.optim = optimizer
         self.train_dl = train_dl
         self.val_dl = val_dl
-        self.timestep = datetime.datetime.now(pytz.timezone('Asiz/Shanghai'))
+        self.timestep_start = datetime.datetime.now(pytz.timezone('Asia/Shanghai'))
         self.size_average = size_average
         if interval_validate is None:
             self.interval_validate = len(self.train_dl)
@@ -60,6 +60,7 @@ class Trainer(object):
             'train/acc',
             'train/acc_cls',
             'train/mean_iu',
+            'train/fwavacc',
             'valid/loss',
             'valid/acc',
             'valid/acc_cls',
@@ -126,9 +127,8 @@ class Trainer(object):
 
         with open(os.path.join(self.out, 'log.csv'), 'a') as f:
             elapsed_time = (
-                datetime.datetime.now(pytz.timezone('Asia/Shanghai')) - 
-                self.timestep_start().total_seconds()
-            )
+                datetime.datetime.now(pytz.timezone('Asia/Shanghai')) - self.timestep_start
+            ).total_seconds()
             log = [self.epoch, self.iteration] + [''] * 5 + \
                   [val_loss] + list(metrics) + [elapsed_time]
             log = map(str, log)
@@ -156,12 +156,12 @@ class Trainer(object):
     def train_epoch(self):
         self.model.train()
 
-        n_class = len(self.train_loader.dataset.class_names)
+        n_class = len(self.train_dl.dataset.class_names)
 
         for batch_idx, (data, target) in tqdm.tqdm(
-                enumerate(self.train_loader), total=len(self.train_loader),
+                enumerate(self.train_dl), total=len(self.train_dl),
                 desc='Train epoch=%d' % self.epoch, ncols=80, leave=False):
-            iteration = batch_idx + self.epoch * len(self.train_loader)
+            iteration = batch_idx + self.epoch * len(self.train_dl)
             if self.iteration != 0 and (iteration - 1) != self.iteration:
                 continue  # for resuming
             self.iteration = iteration
@@ -197,10 +197,10 @@ class Trainer(object):
 
             with open(os.path.join(self.out, 'log.csv'), 'a') as f:
                 elapsed_time = (
-                    datetime.datetime.now(pytz.timezone('Asia/Tokyo')) -
-                    self.timestamp_start).total_seconds()
+                    datetime.datetime.now(pytz.timezone('Asia/Shanghai')) -self.timestep_start
+                ).total_seconds()
                 log = [self.epoch, self.iteration] + [loss_data] + \
-                    metrics.tolist() + [''] * 5 + [elapsed_time]
+                    list(metrics) + [''] * 5 + [elapsed_time]
                 log = map(str, log)
                 f.write(','.join(log) + '\n')
 
@@ -208,13 +208,14 @@ class Trainer(object):
                 break
 
     def train(self):
-        max_epoch = int(math.ceil(1. * self.max_iter / len(self.train_loader)))
+        max_epoch = int(math.ceil(1. * self.max_iter / len(self.train_dl)))
         for epoch in tqdm.trange(self.epoch, max_epoch,
                                  desc='Train', ncols=80):
             self.epoch = epoch
             self.train_epoch()
             if self.iteration >= self.max_iter:
                 break
+        print("Finish Training")
 
             
     
