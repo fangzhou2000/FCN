@@ -1,6 +1,7 @@
 *.pth
 *.log
 *.csv
+*.tar
 logs/
 # Byte-compiled / optimized / DLL files
 __pycache__/
