@@ -10,11 +10,13 @@ from torch.autograd import Variable
 import utils
 from datasets.voc import VOC2011ClassSeg
 from models.fcn32s import FCN32s
+from models.fcn16s import FCN16s
 
 
 def eval():
     parser = argparse.ArgumentParser()
     parser.add_argument('model_file', help='Model Path')
+    parser.add_argument('-m', '--model', type=str, default='FCN32s', help='FCN32s/FCN16s/FCN8s')
     parser.add_argument('-g', '--gpu', type=int, default=0)
     args = parser.parse_args()
 
@@ -28,8 +30,16 @@ def eval():
 
     n_class = len(val_dl.dataset.class_names)
 
-    model = FCN32s(n_class=n_class)
+    model = None
+    if args.model == 'FCN32s':
+        model = FCN32s(n_class=n_class)
+    elif args.model == 'FCN16s':
+        model = FCN16s(n_class=n_class)
+    elif args.model == 'FCN8s':
+        pass
+    assert model is not None
 
+    os.environ['CUDA_VISIBLE_DIVICES'] = str(args.gpu)
     if torch.cuda.is_available():
         model = model.cuda()
 
@@ -81,7 +91,7 @@ Mean IU: {2}
 FWAV Accuracy: {3}'''.format(*metrics))
 
     viz = utils.get_tile_image(visualizations)
-    skimage.io.imsave('viz_evaluate.png', viz)
+    skimage.io.imsave(model_file + '/../viz_evaluate.png', viz)
 
 if __name__ == "__main__":
     import warnings

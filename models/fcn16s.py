@@ -1,25 +1,12 @@
-import os.path
-
-import numpy as np
-import torch
+import os 
 import torch.nn as nn
 
-def get_upsampling_weight(in_channels, out_channels, kernel_size):
-    factor = (kernel_size + 1) // 2
-    if kernel_size % 2 == 1:
-        center = factor - 1
-    else:
-        center = factor -0.5
-    og = np.ogrid[:kernel_size, :kernel_size]
-    filt = (1 - abs(og[0] - center) / factor) * (1 - abs(og[1] - center) / factor)
-    weight = np.zeros((in_channels, out_channels, kernel_size, kernel_size), dtype = np.float64)
-    weight[range(in_channels), range(out_channels), :, :] = filt
-    return torch.from_numpy(weight).float()
+from models.fcn32s import get_upsampling_weight
 
-class FCN32s(nn.Module):
+class FCN16s(nn.Module):
 
     def __init__(self, n_class=21):
-        super(FCN32s, self).__init__()
+        super(FCN16s, self).__init__()
         # conv1
         # in case the size of feature map in the later layer is less than 0, because size will get smaller during the conv 
         self.conv1_1 = nn.Conv2d(3, 64, 3, padding=100) # W+198
@@ -73,7 +60,14 @@ class FCN32s(nn.Module):
         self.drop7 = nn.Dropout2d()
 
         self.score_fr = nn.Conv2d(4096, n_class, 1) # n_class classes
-        self.upscore = nn.ConvTranspose2d(n_class, n_class, 64, stride=32, bias=False) # W+38
+        self.score_pool4 = nn.Conv2d(512, n_class, 1) # merge pool4, (W+198)/16
+        
+        self.upscore2 = nn.ConvTranspose2d(
+            n_class, n_class, 4, stride=2, bias=False
+        ) # 2W' + 2
+        self.upscore16 = nn.ConvTranspose2d(
+            n_class, n_class, 32, stride=16, bias=False
+        ) # 16W' + 16
 
         self._initialize_weights()
 
@@ -85,9 +79,11 @@ class FCN32s(nn.Module):
                     m.bias.data.zero_()
             if isinstance(m, nn.ConvTranspose2d):
                 assert m.kernel_size[0] == m.kernel_size[1]
-                initial_weight = get_upsampling_weight(m.in_channels, m.out_channels, m.kernel_size[0])
+                initial_weight = get_upsampling_weight(
+                    m.in_channels, m.out_channels, m.kernel_size[0]
+                )
                 m.weight.data.copy_(initial_weight)
-        
+
     def forward(self, x):
         h = x
         h = self.relu1_1(self.conv1_1(h))
@@ -107,6 +103,7 @@ class FCN32s(nn.Module):
         h = self.relu4_2(self.conv4_2(h))
         h = self.relu4_3(self.conv4_3(h))
         h = self.pool4(h)
+        pool4 = h  # 1/16
 
         h = self.relu5_1(self.conv5_1(h))
         h = self.relu5_2(self.conv5_2(h))
@@ -120,43 +117,28 @@ class FCN32s(nn.Module):
         h = self.drop7(h)
 
         h = self.score_fr(h)
+        h = self.upscore2(h)
+        upscore2 = h # 2((W+198)/32-6) + 2 = (W+198)/16 -10
 
-        h = self.upscore(h)
-        # because size of output is W+38, we need to get the center by 19 pixel when forward
-        h = h[:, :, 19:19 + x.size()[2], 19:19 + x.size()[3]] 
+        h = self.score_pool4(pool4) # (W+198)/16)
+        h = h[:, :, 5:5 + upscore2.size()[2], 5:5 + upscore2.size()[3]] # (W+198)/16) - 10
+        score_pool4 = h # (W+198)/16) - 10
+
+        h = upscore2 + score_pool4
+
+        h = self.upscore16(h) # 16((W+198)/16) - 10) + 16 = W + 54
+        h = h[:, :, 27:27 + x.size()[2], 27:27 + x.size()[3]] # .contiguous()
 
         return h
-    
-    def copy_params_from_vgg16(self, vgg16):
-        features = [
-            self.conv1_1, self.relu1_1,
-            self.conv1_2, self.relu1_2,
-            self.pool1,
-            self.conv2_1, self.relu2_1,
-            self.conv2_2, self.relu2_2,
-            self.pool2,
-            self.conv3_1, self.relu3_1,
-            self.conv3_2, self.relu3_2,
-            self.conv3_3, self.relu3_3,
-            self.pool3,
-            self.conv4_1, self.relu4_1,
-            self.conv4_2, self.relu4_2,
-            self.conv4_3, self.relu4_3,
-            self.pool4,
-            self.conv5_1, self.relu5_1,
-            self.conv5_2, self.relu5_2,
-            self.conv5_3, self.relu5_3,
-            self.pool5,
-        ]
 
-        for l1, l2 in zip(vgg16.features, features):
-            if isinstance(l1, nn.Conv2d) and isinstance(l2, nn.Conv2d):
-                assert l1.weight.size() == l2.weight.size()
-                assert l1.bias.size() == l2.bias.size()
-                l2.weight.data = l1.weight.data
-                l2.bias.data = l1.bias.data
-        for i, name in zip([0, 3], ['fc6', 'fc7']):
-            l1 = vgg16.classifier[i]
-            l2 = getattr(self, name)
-            l2.weight.data = l1.weight.data.view(l2.weight.size())
-            l2.bias.data = l1.bias.data.view(l2.bias.size())
+    def copy_params_from_fcn32s(self, fcn32s):
+        for name, l1 in fcn32s.named_children():
+            try:
+                l2 = getattr(self, name)
+                l2.weight
+            except Exception:
+                continue
+            assert l1.weight.size() == l2.weight.size()
+            assert l1.bias.size() == l2.bias.size()
+            l2.weight.data.copy_(l1.weight.data)
+            l2.bias.data.copy_(l1.bias.data)
