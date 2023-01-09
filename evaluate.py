@@ -11,6 +11,7 @@ import utils
 from datasets.voc import VOC2011ClassSeg
 from models.fcn32s import FCN32s
 from models.fcn16s import FCN16s
+from models.fcn8s import FCN8s
 
 
 def eval():
@@ -36,7 +37,7 @@ def eval():
     elif args.model == 'FCN16s':
         model = FCN16s(n_class=n_class)
     elif args.model == 'FCN8s':
-        pass
+        model = FCN8s(n_class=n_class)
     assert model is not None
 
     os.environ['CUDA_VISIBLE_DIVICES'] = str(args.gpu)

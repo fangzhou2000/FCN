@@ -122,9 +122,9 @@ class FCN16s(nn.Module):
 
         h = self.score_pool4(pool4) # (W+198)/16)
         h = h[:, :, 5:5 + upscore2.size()[2], 5:5 + upscore2.size()[3]] # (W+198)/16) - 10
-        score_pool4 = h # (W+198)/16) - 10
+        score_pool4c = h # (W+198)/16) - 10
 
-        h = upscore2 + score_pool4
+        h = upscore2 + score_pool4c
 
         h = self.upscore16(h) # 16((W+198)/16) - 10) + 16 = W + 54
         h = h[:, :, 27:27 + x.size()[2], 27:27 + x.size()[3]] # .contiguous()
